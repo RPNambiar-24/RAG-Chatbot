@@ -189,6 +189,7 @@ def search_backend(query: str, user_id: str):
 if auth_flow():
 
     st.title("📄 RAG Chatbot")
+    st.write(supabase.auth.get_user())
 
     user_id = st.session_state.user.id
 
