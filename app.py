@@ -31,6 +31,7 @@ def get_supabase_client() -> Client:
 
     return client
 
+
 supabase = get_supabase_client()
 
 # ==============================
@@ -103,19 +104,6 @@ def auth_flow():
 
 
 # ==============================
-# STORAGE
-# ==============================
-def upload_file(file, user_id):
-    path = f"{user_id}/{file.name}"
-    supabase.storage.from_("pdfs").upload(
-        path,
-        file.getvalue(),
-        file_options={"content-type": "application/pdf"}
-    )
-    return path
-
-
-# ==============================
 # BACKEND
 # ==============================
 def process_pdf(file, user_id):
@@ -131,7 +119,7 @@ def search(query, user_id):
         f"{BACKEND_URL}/search",
         json={"query": query, "user_id": user_id}
     )
-    return res.json().get("context", "")
+    return res.json()
 
 
 # ==============================
@@ -140,111 +128,96 @@ def search(query, user_id):
 if auth_flow():
 
     st.title("📄 RAG Chatbot")
+
     user_id = st.session_state.user.id
 
     # --------------------------
-    # UPLOAD
-    # --------------------------
-    uploaded_files = st.file_uploader(
-        "Upload PDFs", type=["pdf"], accept_multiple_files=True
-    )
-
-    if uploaded_files and st.button("Process Documents"):
-        existing = [
-            f["name"] for f in supabase.storage.from_("pdfs").list(user_id)
-        ]
-
-        for file in uploaded_files:
-            if file.name in existing:
-                st.warning(f"{file.name} already exists")
-                continue
-
-            st.info(f"Processing {file.name}...")
-
-            upload_file(file, user_id)
-            process_pdf(file, user_id)
-
-            st.success(f"{file.name} processed successfully")
-
-    # --------------------------
-    # DOCUMENTS
-    # --------------------------
-    st.sidebar.subheader("📚 Documents")
-
-    files = supabase.storage.from_("pdfs").list(user_id)
-    docs = [f["name"] for f in files] if files else []
-
-    for doc in docs:
-        col1, col2 = st.sidebar.columns([8, 2])
-
-        with col1:
-            if st.button(doc, key=f"view_{doc}"):
-                st.session_state.viewing_pdf = doc
-
-        with col2:
-            if st.button("❌", key=f"del_{doc}"):
-                requests.post(
-                    f"{BACKEND_URL}/delete_pdf",
-                    json={"file_name": doc, "user_id": user_id}
-                )
-                supabase.storage.from_("pdfs").remove([f"{user_id}/{doc}"])
-                st.rerun()
-
-    # --------------------------
-    # VIEWER
-    # --------------------------
-    if st.session_state.viewing_pdf:
-        path = f"{user_id}/{st.session_state.viewing_pdf}"
-        url = supabase.storage.from_("pdfs").get_public_url(path)["publicUrl"]
-
-        st.markdown(
-            f'<iframe src="{url}" width="100%" height="600"></iframe>',
-            unsafe_allow_html=True
-        )
-
-    # --------------------------
-    # CHAT
+    # CHAT CLEAR
     # --------------------------
     if st.button("🧹 Clear Chat"):
         st.session_state.messages = []
         st.rerun()
 
+    # --------------------------
+    # RENDER HISTORY
+    # --------------------------
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
+            # Show sources if exist
+            if "sources" in msg:
+                st.markdown("**Sources:**")
+                for s in msg["sources"]:
+                    st.markdown(f"- {s}")
+
+    # --------------------------
+    # INPUT
+    # --------------------------
     prompt = st.chat_input("Ask something...")
 
     if prompt:
-        st.session_state.messages.append({"role": "user", "content": prompt})
+        # SHOW USER MESSAGE IMMEDIATELY
+        with st.chat_message("user"):
+            st.markdown(prompt)
 
-        context = search(prompt, user_id)
+        st.session_state.messages.append({
+            "role": "user",
+            "content": prompt
+        })
 
-        if not context or "No relevant context" in context:
-            st.warning("No relevant info found. Upload documents first.")
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": "No relevant information found."
-            })
-        else:
-            llm = ChatGoogleGenerativeAI(
-                model="gemini-2.5-flash",
-                temperature=0.3,
-                google_api_key=st.secrets["GEMINI_API_KEY"]
-            )
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
 
-            prompt_template = PromptTemplate(
-                template="Context:\n{context}\n\nQuestion:\n{question}\nAnswer:",
-                input_variables=["context", "question"]
-            )
+                result = search(prompt, user_id)
+                context = result.get("context", "")
+                sources = result.get("sources", [])
 
-            response = llm.invoke(
-                prompt_template.format(context=context, question=prompt)
-            ).content
+                # HANDLE EMPTY CONTEXT
+                if not context or "No relevant context" in context:
+                    response_text = "No relevant information found. Upload documents first."
+                    st.warning(response_text)
 
-            st.chat_message("assistant").markdown(response)
+                else:
+                    llm = ChatGoogleGenerativeAI(
+                        model="gemini-2.5-flash",
+                        temperature=0.3,
+                        google_api_key=st.secrets["GEMINI_API_KEY"]
+                    )
 
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": response
-            })
+                    prompt_template = PromptTemplate(
+                        template="""
+Answer ONLY from context.
+
+Context:
+{context}
+
+Question:
+{question}
+
+Answer:
+""",
+                        input_variables=["context", "question"]
+                    )
+
+                    response_text = llm.invoke(
+                        prompt_template.format(
+                            context=context,
+                            question=prompt
+                        )
+                    ).content
+
+                    st.markdown(response_text)
+
+                    # SHOW SOURCES
+                    if sources:
+                        st.markdown("**Sources:**")
+                        for s in sources:
+                            st.markdown(f"- {s}")
+
+        # STORE MESSAGE WITH SOURCES
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": response_text,
+            "sources": sources
+        })
