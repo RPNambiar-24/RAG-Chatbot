@@ -21,7 +21,7 @@ def init_supabase() -> Client:
         st.secrets["SUPABASE_KEY"]
     )
 
-supabase = init_supabase()
+supabase = get_supabase_client()
 
 # ==============================
 # SESSION RESTORE
