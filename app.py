@@ -177,30 +177,30 @@ if auth_flow():
 
         st.success("Documents processed successfully!")
 
-st.sidebar.markdown("---")
-st.sidebar.subheader("📚 Your Documents")
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📚 Your Documents")
 
-try:
-    files = supabase.storage.from_("pdfs").list(user_id)
-    documents = [f["name"] for f in files]
-except:
-    documents = []
+    try:
+        files = supabase.storage.from_("pdfs").list(user_id)
+        documents = [f["name"] for f in files]
+    except:
+        documents = []
 
-if documents:
-    for doc in documents:
-        col1, col2 = st.sidebar.columns([8, 2])
+    if documents:
+        for doc in documents:
+            col1, col2 = st.sidebar.columns([8, 2])
 
-        # VIEW
-        with col1:
-            if st.button(f"📄 {doc}", key=f"view_{doc}"):
-                st.session_state.viewing_pdf = doc
+            # VIEW
+            with col1:
+                if st.button(f"📄 {doc}", key=f"view_{doc}"):
+                    st.session_state.viewing_pdf = doc
 
         # DELETE
-        with col2:
-            if st.button("❌", key=f"del_{doc}"):
+            with col2:
+                if st.button("❌", key=f"del_{doc}"):
 
                 # Delete from vector DB
-                requests.post(
+                    requests.post(
                     f"{BACKEND_URL}/delete_pdf",
                     json={
                         "file_name": doc,
@@ -209,13 +209,13 @@ if documents:
                 )
 
                 # Delete from storage
-                supabase.storage.from_("pdfs").remove(
+                    supabase.storage.from_("pdfs").remove(
                     [f"{user_id}/{doc}"]
-                )
+                    )
 
-                st.rerun()
-else:
-    st.sidebar.info("No documents uploaded.")
+                    st.rerun()
+    else:
+        st.sidebar.info("No documents uploaded.")
     # ------------------------------
     # CHAT SYSTEM
     # ------------------------------
