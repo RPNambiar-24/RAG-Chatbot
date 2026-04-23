@@ -177,6 +177,49 @@ if auth_flow():
 
         st.success("Documents processed successfully!")
 
+
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📚 Your Documents")
+
+# Fetch documents from backend
+    try:
+        res = requests.get(
+            f"{BACKEND_URL}/list_documents",
+            params={"user_id": user_id}
+        )
+        documents = res.json().get("documents", [])
+    except:
+        documents = []
+
+    if documents:
+        for doc in documents:
+            col1, col2 = st.sidebar.columns([8, 2])
+
+            # VIEW BUTTON
+            with col1:
+                if st.button(f"📄 {doc}", key=f"view_{doc}"):
+                    st.session_state.viewing_pdf = doc
+
+        # DELETE BUTTON
+            with col2:
+                if st.button("❌", key=f"del_{doc}"):
+
+                    # 1. Delete from backend
+                    requests.post(
+                        f"{BACKEND_URL}/delete_pdf",
+                        json={
+                            "file_name": doc,
+                            "user_id": user_id
+                        }
+                    )
+
+                    # 2. Delete from Supabase
+                    supabase.storage.from_("pdfs").remove([f"{user_id}/{doc}"])
+
+                    st.rerun()
+    else:
+        st.sidebar.info("No documents uploaded.")
+
     # ------------------------------
     # CHAT SYSTEM
     # ------------------------------
