@@ -1,8 +1,5 @@
 streamlit
-langchain
-langchain-chroma
-langchain-huggingface
-chromadb
-sentence-transformers
-pypdf
+requests
+supabase
 langchain-google-genai
+langchain-core
