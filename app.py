@@ -15,11 +15,26 @@ st.set_page_config(page_title="RAG Chatbot", layout="wide")
 # SUPABASE INIT
 # ==============================
 @st.cache_resource
-def init_supabase() -> Client:
-    return create_client(
+# ==============================
+# SUPABASE CLIENT (FIXED)
+# ==============================
+def get_supabase_client() -> Client:
+    client = create_client(
         st.secrets["SUPABASE_URL"],
         st.secrets["SUPABASE_KEY"]
     )
+
+    # restore session every run
+    if "session" in st.session_state:
+        try:
+            client.auth.set_session(
+                st.session_state.session["access_token"],
+                st.session_state.session["refresh_token"]
+            )
+        except Exception:
+            pass
+
+    return client
 
 supabase = get_supabase_client()
 
