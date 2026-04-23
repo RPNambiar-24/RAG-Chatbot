@@ -11,7 +11,6 @@ BACKEND_URL = "https://rag-backend-681419760900.asia-south1.run.app"
 
 st.set_page_config(page_title="RAG Chatbot", layout="wide")
 
-
 # ==============================
 # SUPABASE INIT
 # ==============================
@@ -24,14 +23,34 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
+# ==============================
+# SESSION RESTORE
+# ==============================
+if "session" in st.session_state:
+    try:
+        supabase.auth.set_session(
+            st.session_state.session["access_token"],
+            st.session_state.session["refresh_token"]
+        )
+    except Exception:
+        pass
 
 # ==============================
-# AUTH
+# AUTH STATE
 # ==============================
 if "user" not in st.session_state:
     st.session_state.user = None
 
+if "viewing_pdf" not in st.session_state:
+    st.session_state.viewing_pdf = None
 
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+
+# ==============================
+# AUTH FLOW
+# ==============================
 def auth_flow() -> bool:
     st.sidebar.title("Authentication")
 
@@ -42,14 +61,14 @@ def auth_flow() -> bool:
         if st.sidebar.button("Logout"):
             supabase.auth.sign_out()
             st.session_state.user = None
+            st.session_state.session = None
             st.rerun()
 
         return True
 
-    # Login / Signup tabs
     tab1, tab2 = st.sidebar.tabs(["Login", "Signup"])
 
-    # Login
+    # LOGIN
     with tab1:
         email = st.text_input("Email", key="login_email")
         password = st.text_input("Password", type="password", key="login_pass")
@@ -60,12 +79,24 @@ def auth_flow() -> bool:
                     "email": email,
                     "password": password
                 })
+
                 st.session_state.user = res.user
+                st.session_state.session = {
+                    "access_token": res.session.access_token,
+                    "refresh_token": res.session.refresh_token
+                }
+
+                supabase.auth.set_session(
+                    res.session.access_token,
+                    res.session.refresh_token
+                )
+
                 st.rerun()
+
             except Exception as e:
                 st.error(f"Login failed: {e}")
 
-    # Signup
+    # SIGNUP
     with tab2:
         email = st.text_input("Email", key="signup_email")
         password = st.text_input("Password", type="password", key="signup_pass")
@@ -84,41 +115,34 @@ def auth_flow() -> bool:
 
 
 # ==============================
-# STORAGE (SUPABASE)
+# STORAGE FUNCTIONS
 # ==============================
 def upload_to_supabase(file, user_id: str):
-    bucket = "pdfs"
-    file_path = f"{user_id}/{file.name}"
-
     try:
-        supabase.storage.from_(bucket).upload(
-            path=file_path,
+        path = f"{user_id}/{file.name}"
+
+        supabase.storage.from_("pdfs").upload(
+            path=path,
             file=file.getvalue(),
             file_options={"content-type": "application/pdf"}
         )
-        return file_path
+
+        return path
+
     except Exception as e:
         st.error(f"Upload failed: {e}")
         return None
 
 
 # ==============================
-# BACKEND API CALLS
+# BACKEND CALLS
 # ==============================
 def process_pdf_backend(file, user_id: str):
     try:
-        files = {
-            "file": (file.name, file.getvalue(), "application/pdf")
-        }
-
-        data = {
-            "user_id": user_id
-        }
-
         res = requests.post(
             f"{BACKEND_URL}/process_pdf",
-            files=files,
-            data=data,
+            files={"file": (file.name, file.getvalue(), "application/pdf")},
+            data={"user_id": user_id},
             timeout=60
         )
 
@@ -133,10 +157,7 @@ def search_backend(query: str, user_id: str):
     try:
         res = requests.post(
             f"{BACKEND_URL}/search",
-            json={
-                "query": query,
-                "user_id": user_id
-            },
+            json={"query": query, "user_id": user_id},
             timeout=60
         )
 
@@ -156,9 +177,9 @@ if auth_flow():
 
     user_id = st.session_state.user.id
 
-    # ------------------------------
-    # FILE UPLOAD
-    # ------------------------------
+    # --------------------------
+    # UPLOAD
+    # --------------------------
     uploaded_files = st.file_uploader(
         "Upload PDFs",
         type=["pdf"],
@@ -166,24 +187,25 @@ if auth_flow():
     )
 
     if uploaded_files and st.button("Process Documents"):
-        with st.spinner("Processing documents..."):
+        with st.spinner("Processing..."):
             for file in uploaded_files:
+                path = upload_to_supabase(file, user_id)
 
-                # Upload to Supabase
-                file_path = upload_to_supabase(file, user_id)
-
-                if file_path:
+                if path:
                     process_pdf_backend(file, user_id)
 
-        st.success("Documents processed successfully!")
+        st.success("Documents processed!")
 
+    # --------------------------
+    # DOCUMENT LIST
+    # --------------------------
     st.sidebar.markdown("---")
     st.sidebar.subheader("📚 Your Documents")
 
     try:
         files = supabase.storage.from_("pdfs").list(user_id)
         documents = [f["name"] for f in files]
-    except:
+    except Exception:
         documents = []
 
     if documents:
@@ -195,66 +217,74 @@ if auth_flow():
                 if st.button(f"📄 {doc}", key=f"view_{doc}"):
                     st.session_state.viewing_pdf = doc
 
-        # DELETE
+            # DELETE
             with col2:
                 if st.button("❌", key=f"del_{doc}"):
 
-                # Delete from vector DB
+                    # Delete from backend
                     requests.post(
-                    f"{BACKEND_URL}/delete_pdf",
-                    json={
-                        "file_name": doc,
-                        "user_id": user_id
-                    }
-                )
+                        f"{BACKEND_URL}/delete_pdf",
+                        json={"file_name": doc, "user_id": user_id}
+                    )
 
-                # Delete from storage
+                    # Delete from storage
                     supabase.storage.from_("pdfs").remove(
-                    [f"{user_id}/{doc}"]
+                        [f"{user_id}/{doc}"]
                     )
 
                     st.rerun()
     else:
         st.sidebar.info("No documents uploaded.")
-    # ------------------------------
-    # CHAT SYSTEM
-    # ------------------------------
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
 
-    # Display chat history
+    # --------------------------
+    # PDF VIEWER
+    # --------------------------
+    if st.session_state.viewing_pdf:
+        st.markdown("---")
+        st.subheader(f"📖 {st.session_state.viewing_pdf}")
+
+        if st.button("Close Viewer"):
+            st.session_state.viewing_pdf = None
+            st.rerun()
+
+        path = f"{user_id}/{st.session_state.viewing_pdf}"
+
+        try:
+            url = supabase.storage.from_("pdfs").get_public_url(path)["publicUrl"]
+
+            st.markdown(
+                f'<iframe src="{url}" width="100%" height="600"></iframe>',
+                unsafe_allow_html=True
+            )
+        except Exception:
+            st.error("Cannot load PDF")
+
+    # --------------------------
+    # CHAT
+    # --------------------------
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # User input
-    prompt = st.chat_input("Ask something about your PDFs...")
+    prompt = st.chat_input("Ask about your PDFs...")
 
     if prompt:
-        st.session_state.messages.append({
-            "role": "user",
-            "content": prompt
-        })
-
-        with st.chat_message("user"):
-            st.markdown(prompt)
+        st.session_state.messages.append({"role": "user", "content": prompt})
 
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
 
-                # Retrieve context
                 context = search_backend(prompt, user_id)
 
-                # LLM
                 llm = ChatGoogleGenerativeAI(
                     model="gemini-2.5-flash",
                     temperature=0.3,
                     google_api_key=st.secrets["GEMINI_API_KEY"]
                 )
 
-                prompt_template = PromptTemplate(
+                template = PromptTemplate(
                     template="""
-Answer ONLY from the provided context.
+Answer ONLY from context.
 
 Context:
 {context}
@@ -268,10 +298,7 @@ Answer:
                 )
 
                 response = llm.invoke(
-                    prompt_template.format(
-                        context=context,
-                        question=prompt
-                    )
+                    template.format(context=context, question=prompt)
                 ).content
 
                 st.markdown(response)
