@@ -199,7 +199,7 @@ if auth_flow():
         st.subheader(f"Viewing: {st.session_state.viewing_pdf}")
 
         path = f"{user_id}/{st.session_state.viewing_pdf}"
-        url = supabase.storage.from_("pdfs").get_public_url(path)["publicUrl"]
+        url = supabase.storage.from_("pdfs").get_public_url(path)
 
         st.markdown(
             f'<iframe src="{url}" width="100%" height="600"></iframe>',
