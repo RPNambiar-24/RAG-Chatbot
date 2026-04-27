@@ -219,7 +219,7 @@ if auth_flow():
         st.markdown(
             f""
             <a href="{pdf_url}" target="_blank">
-                Click here if button doesn't work
+                Click here if button doesnt work
             </a>
             "",
             unsafe_allow_html=True
