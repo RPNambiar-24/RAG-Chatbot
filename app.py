@@ -191,21 +191,45 @@ if auth_flow():
     else:
         st.sidebar.info("No documents uploaded.")
 
+
+
     # --------------------------
-    # PDF VIEWER
-    # --------------------------
+# PDF VIEWER
+# --------------------------
     if st.session_state.viewing_pdf:
         st.markdown("---")
         st.subheader(f"Viewing: {st.session_state.viewing_pdf}")
 
+    if st.button("Close Viewer"):
+        st.session_state.viewing_pdf = None
+        st.rerun()
+
+    try:
         path = f"{user_id}/{st.session_state.viewing_pdf}"
-        url = supabase.storage.from_("pdfs").get_public_url(path)
+
+        pdf_url = supabase.storage.from_("pdfs").get_public_url(path)
+
+        st.success("PDF ready to view")
+
+        st.link_button(
+            "📄 Open PDF in New Tab",
+            pdf_url
+        )
 
         st.markdown(
-            f'<iframe src="{url}" width="100%" height="600"></iframe>',
+            f""
+            <a href="{pdf_url}" target="_blank">
+                Click here if button doesn't work
+            </a>
+            "",
             unsafe_allow_html=True
         )
 
+    except Exception as e:
+        st.error(f"Unable to load PDF: {e}")
+
+
+   
     # --------------------------
     # CHAT
     # --------------------------
