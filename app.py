@@ -216,10 +216,10 @@ if auth_flow():
             pdf_url
         )
 
-        st.markdown(
-            f'<a href="{pdf_url}" target="_blank">Click here if button doesn\'t work</a>',
-            unsafe_allow_html=True
-        )
+        #st.markdown(
+        #    f'<a href="{pdf_url}" target="_blank">Click here if button doesn\'t work</a>',
+        #    unsafe_allow_html=True
+        #)
 
     except Exception as e:
         st.error(f"Unable to load PDF: {e}")
