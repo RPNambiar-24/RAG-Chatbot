@@ -200,29 +200,29 @@ if auth_flow():
         st.markdown("---")
         st.subheader(f"Viewing: {st.session_state.viewing_pdf}")
 
-    if st.button("Close Viewer"):
-        st.session_state.viewing_pdf = None
-        st.rerun()
+        if st.button("Close Viewer"):
+            st.session_state.viewing_pdf = None
+            st.rerun()
 
-    try:
-        path = f"{user_id}/{st.session_state.viewing_pdf}"
+        try:
+            path = f"{user_id}/{st.session_state.viewing_pdf}"
 
-        pdf_url = supabase.storage.from_("pdfs").get_public_url(path)
+            pdf_url = supabase.storage.from_("pdfs").get_public_url(path)
 
-        st.success("PDF ready to view")
+            st.success("PDF ready to view")
 
-        st.link_button(
+            st.link_button(
             "📄 Open PDF in New Tab",
             pdf_url
-        )
+            )
 
         #st.markdown(
         #    f'<a href="{pdf_url}" target="_blank">Click here if button doesn\'t work</a>',
         #    unsafe_allow_html=True
         #)
 
-    except Exception as e:
-        st.error(f"Unable to load PDF: {e}")
+        except Exception as e:
+            st.error(f"Unable to load PDF: {e}")
 
 
    
